@@ -14,6 +14,9 @@ EVENT_SCHEMA = T.StructType([
     T.StructField("ts", T.LongType(), False),
 ])
 
+# Archive layout: events plus the `day` partition column.
+ARCHIVE_SCHEMA = T.StructType(EVENT_SCHEMA.fields + [T.StructField("day", T.StringType(), True)])
+
 _decode_udf = F.udf(decode, EVENT_SCHEMA)
 
 

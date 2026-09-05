@@ -69,7 +69,7 @@ def main() -> None:
     import uvicorn
 
     uvicorn.run(create_app(open_store(settings.opensearch_url, settings.index_prefix)),
-                host="0.0.0.0", port=8000)
+                host="0.0.0.0", port=settings.api_port)
 
 
 if __name__ == "__main__":

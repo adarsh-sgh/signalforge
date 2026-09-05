@@ -38,7 +38,7 @@ def test_kafka_bytes_decode_and_poison_dropped(spark):
 def test_streaming_update_mode_upserts_running_aggregates(spark, cfg, archive):
     """File source stands in for Kafka: same dedup/aggregate graph, update mode, availableNow."""
     store = InMemoryStore()
-    stream = spark.readStream.schema(transform.EVENT_SCHEMA.add("day", "string")).parquet(archive).drop("day")
+    stream = spark.readStream.schema(transform.ARCHIVE_SCHEMA).parquet(archive).drop("day")
     agg = transform.aggregate(transform.dedup(transform.with_event_time(stream), cfg.watermark), cfg.window)
     q = (agg.writeStream.outputMode("update")
          .foreachBatch(lambda b, _: write_dataframe(store, cfg.index_prefix, transform.to_documents(b)))

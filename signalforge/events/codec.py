@@ -28,7 +28,7 @@ def decode(raw: bytes) -> Optional[Dict]:
         return None
     ev = SignalEvent()
     try:
-        ev.ParseFromString(raw)
+        ev.ParseFromString(bytes(raw))  # Spark hands BinaryType over as bytearray
     except Exception:
         return None
     if not ev.entity_id or ev.ts <= 0:

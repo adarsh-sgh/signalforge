@@ -17,6 +17,7 @@ class Settings:
     window: str = field(default_factory=lambda: _env("WINDOW", "1 day"))
     watermark: str = field(default_factory=lambda: _env("WATERMARK", "10 minutes"))
     metrics_port: int = field(default_factory=lambda: int(_env("METRICS_PORT", "9108")))
+    api_port: int = field(default_factory=lambda: int(_env("API_PORT", "8000")))
 
 
 settings = Settings()

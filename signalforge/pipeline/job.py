@@ -1,5 +1,7 @@
 """Spark entrypoint. `--mode stream` tails Kafka; `--mode batch` replays a Parquet directory."""
 import argparse
+import os
+import sys
 import time
 from typing import Optional
 
@@ -16,6 +18,9 @@ KAFKA_PKG = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3"
 
 
 def build_spark(app: str = "signalforge", local: bool = True, kafka: bool = False) -> SparkSession:
+    # Workers must run the same interpreter (venv) as the driver, otherwise the protobuf UDF
+    # runs under whatever `python3` is on PATH.
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
     # UTC so day windows and index names agree regardless of where the driver runs.
     b = (SparkSession.builder.appName(app)
          .config("spark.sql.shuffle.partitions", "8")
@@ -28,7 +33,7 @@ def build_spark(app: str = "signalforge", local: bool = True, kafka: bool = Fals
 
 
 def read_parquet_events(spark: SparkSession, path: str, day: Optional[str] = None) -> DataFrame:
-    df = spark.read.schema(transform.EVENT_SCHEMA.add("day", "string")).parquet(path)
+    df = spark.read.schema(transform.ARCHIVE_SCHEMA).parquet(path)
     if day:
         df = df.where(F.col("day") == day)
     return df.drop("day")

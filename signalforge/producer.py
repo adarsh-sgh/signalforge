@@ -57,7 +57,7 @@ def publish(producer: Producer, topic: str, n: int, n_entities: int = 200, seed:
             ev = last
         else:
             ev = last = synth_event(rng, n_entities, now_ms)
-        producer.produce(topic, ev["entity_id"].encode(), encode(**ev))
+        producer.produce(topic, key=ev["entity_id"].encode(), value=encode(**ev))
         sent += 1
         if rate > 0:
             time.sleep(1.0 / rate)

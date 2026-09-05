@@ -7,7 +7,7 @@ def test_roundtrip_and_poison():
     d = decode(raw)
     assert d["entity_id"] == "ent-1" and d["score"] == 4.2 and d["ts"] == 1700000000000
     assert d["event_id"] == make_event_id("ent-1", "review", "web", 1700000000000)
-    assert decode(raw) == d  # deterministic id => retries dedup downstream
+    assert decode(bytearray(raw)) == d  # Spark passes BinaryType as bytearray
     assert decode(b"") is None and decode(b"\xff\xff\xff") is None
     assert decode(encode("", "review", 1.0, "web", 1)) is None  # missing entity id
 

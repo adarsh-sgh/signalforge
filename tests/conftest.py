@@ -7,6 +7,8 @@ import pytest
 
 if "JAVA_HOME" not in os.environ and os.path.isdir("/opt/homebrew/opt/openjdk@17"):
     os.environ["JAVA_HOME"] = "/opt/homebrew/opt/openjdk@17"
+# keep airflow's scratch files (if installed) inside the repo, not ~/airflow
+os.environ.setdefault("AIRFLOW_HOME", os.path.join(os.path.dirname(os.path.dirname(__file__)), "airflow"))
 
 from signalforge.config import Settings  # noqa: E402
 from signalforge.events.codec import make_event_id  # noqa: E402
