@@ -1,0 +1,11 @@
+pyspark==3.5.3
+pyarrow>=14,<17
+protobuf>=4.25,<5
+grpcio-tools>=1.60,<1.63
+confluent-kafka>=2.3,<3
+opensearch-py>=2.4,<3
+fastapi>=0.110,<0.116
+uvicorn>=0.27,<0.31
+httpx>=0.27,<0.28
+prometheus-client>=0.19,<0.21
+pytest>=7.4,<9

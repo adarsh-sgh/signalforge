@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package signalforge;
+
+// One scored observation about an entity (a product, a sensor, a user...).
+message SignalEvent {
+  string event_id    = 1;  // producer-assigned; used for exactly-once style dedup
+  string entity_id   = 2;
+  string signal_type = 3;  // e.g. "review", "temperature", "click"
+  double score       = 4;
+  string source      = 5;  // originating system
+  int64  ts          = 6;  // event time, epoch millis
+}
