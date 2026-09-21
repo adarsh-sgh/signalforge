@@ -1,6 +1,7 @@
-"""Pick the rollup store from settings. Shared by the Spark job and the API."""
+"""Pick the rollup store (and optional cache) from settings. Shared by the Spark job and the API."""
 from typing import Optional
 
+from signalforge.cache import CachedStore, RedisCache
 from signalforge.config import Settings, settings
 from signalforge.search.store import SearchStore, open_store
 
@@ -17,4 +18,6 @@ def open_sink(cfg: Settings = settings, kind: Optional[str] = None) -> SearchSto
         store = open_store(cfg.opensearch_url, cfg.index_prefix)
     else:
         raise ValueError("unknown sink %r, expected one of %s" % (kind, SINKS))
+    if cfg.redis_url:
+        store = CachedStore(store, RedisCache(cfg.redis_url), ttl=cfg.cache_ttl)
     return store

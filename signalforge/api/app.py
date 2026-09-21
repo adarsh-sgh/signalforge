@@ -1,4 +1,4 @@
-"""Read API over the per-day rollups (SF_SINK picks the store).
+"""Read API over the per-day rollups (SF_SINK picks the store, REDIS_URL adds a lookup cache).
 Point lookups only; no scoring logic lives here."""
 import datetime as dt
 import time

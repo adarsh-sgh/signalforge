@@ -9,6 +9,7 @@ BATCH_ROWS = Gauge("sf_last_batch_rows", "Input rows in the most recent batch")
 
 HTTP_REQUESTS = Counter("sf_http_requests_total", "API requests", ["path", "status"])
 HTTP_LATENCY = Histogram("sf_http_latency_seconds", "API latency", ["path"])
+CACHE_LOOKUPS = Counter("sf_cache_lookups_total", "Point-lookup cache results", ["result"])
 
 
 def serve(port: int) -> None:

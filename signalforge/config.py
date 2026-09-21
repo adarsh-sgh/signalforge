@@ -20,6 +20,9 @@ class Settings:
     api_port: int = field(default_factory=lambda: int(_env("API_PORT", "8000")))
     sink: str = field(default_factory=lambda: _env("SINK", "opensearch"))
     clickhouse_url: str = field(default_factory=lambda: _env("CLICKHOUSE_URL", "http://localhost:8123"))
+    # REDIS_URL (no SF_ prefix, the conventional name); empty disables the cache
+    redis_url: str = field(default_factory=lambda: os.environ.get("REDIS_URL", ""))
+    cache_ttl: int = field(default_factory=lambda: int(_env("CACHE_TTL", "60")))
 
 
 settings = Settings()
