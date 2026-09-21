@@ -5,6 +5,7 @@ import os
 import time
 
 from bench.gen_parquet import generate
+from signalforge.capacity import measure_doc_bytes
 from signalforge.clickhouse_store import InMemoryClickHouseStore
 from signalforge.config import Settings
 from signalforge.pipeline.job import build_spark, run_batch
@@ -35,6 +36,8 @@ def main() -> None:
     dt = time.time() - t0
     print("sink=%s rows=%d docs=%d wall=%.2fs throughput=%.0f rows/s" % (a.sink, a.rows, docs, dt, a.rows / dt))
     if a.sink == "opensearch":
+        print("  avg doc bytes=%.0f (json _source; feed --doc-bytes to signalforge.capacity)"
+              % measure_doc_bytes(d for docs in store.indices.values() for d in docs.values()))
         for idx in sorted(store.indices):
             routes = {r for r in store.routing[idx].values() if r}
             print("  %-24s docs=%-7d routing keys=%d" % (idx, store.count(idx), len(routes)))
