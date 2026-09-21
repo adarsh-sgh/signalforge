@@ -111,5 +111,5 @@ class CachedStore:
     def alias_indices(self, alias: str) -> List[str]:
         return self.store.alias_indices(alias)
 
-    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> None:
-        self.store.update_alias(alias, add, remove)
+    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> bool:
+        return self.store.update_alias(alias, add, remove)

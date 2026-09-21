@@ -30,6 +30,8 @@ class Settings:
     tenant_quota: str = field(default_factory=lambda: _env("TENANT_QUOTA", ""))
     tenant_quota_default: int = field(default_factory=lambda: int(_env("TENANT_QUOTA_DEFAULT", "0")))
     retention_days: int = field(default_factory=lambda: int(_env("RETENTION_DAYS", "30")))
+    # primaries for indices the lifecycle step pre-creates: "pooled=3,acme=6" (missing = mapping default)
+    index_shards: str = field(default_factory=lambda: _env("INDEX_SHARDS", ""))
 
 
 settings = Settings()

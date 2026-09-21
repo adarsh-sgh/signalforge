@@ -36,7 +36,7 @@ def check_tenant(tenant: str) -> str:
     return tenant
 
 
-def _parse_map(spec: str) -> Dict[str, int]:
+def parse_map(spec: str) -> Dict[str, int]:
     """'acme=4,beta=2' -> {'acme': 4, 'beta': 2}"""
     out = {}
     for part in filter(None, (p.strip() for p in spec.split(","))):
@@ -54,7 +54,7 @@ class Router:
     @classmethod
     def from_settings(cls, cfg: Settings) -> "Router":
         dedicated = frozenset(check_tenant(t.strip()) for t in cfg.dedicated_tenants.split(",") if t.strip())
-        return cls(cfg.index_prefix, dedicated, _parse_map(cfg.routing_partitions))
+        return cls(cfg.index_prefix, dedicated, parse_map(cfg.routing_partitions))
 
     def is_dedicated(self, tenant: str) -> bool:
         return tenant in self.dedicated
@@ -111,7 +111,7 @@ class Quota:
 
     @classmethod
     def from_settings(cls, cfg: Settings) -> Optional["Quota"]:
-        limits = _parse_map(cfg.tenant_quota)
+        limits = parse_map(cfg.tenant_quota)
         return cls(limits, cfg.tenant_quota_default) if limits or cfg.tenant_quota_default else None
 
     def limit_for(self, tenant: str) -> int:

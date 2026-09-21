@@ -147,8 +147,8 @@ class ClickHouseStore:
     def alias_indices(self, alias: str) -> List[str]:
         return []  # no aliases: reads are `WHERE day IN ...` on one table
 
-    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> None:
-        pass
+    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> bool:
+        return False
 
 
 class InMemoryClickHouseStore:
@@ -203,5 +203,5 @@ class InMemoryClickHouseStore:
     def alias_indices(self, alias: str) -> List[str]:
         return []
 
-    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> None:
-        pass
+    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> bool:
+        return False

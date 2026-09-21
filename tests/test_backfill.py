@@ -27,5 +27,5 @@ def test_dag_wiring():
     pytest.importorskip("airflow")
     from dags.signalforge_daily import dag
 
-    assert [t.task_id for t in dag.topological_sort()] == ["compact_day", "reindex_day", "verify_day"]
+    assert [t.task_id for t in dag.topological_sort()] == ["compact_day", "reindex_day", "verify_day", "rollover"]
     assert dag.schedule_interval == "0 2 * * *" and not dag.catchup

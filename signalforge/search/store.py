@@ -59,7 +59,7 @@ class SearchStore(Protocol):
     def list_indices(self, pattern: str) -> List[str]: ...
     def delete_index(self, index: str) -> None: ...
     def alias_indices(self, alias: str) -> List[str]: ...
-    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> None: ...
+    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> bool: ...  # False: no alias support
 
 
 class InMemoryStore:
@@ -114,7 +114,7 @@ class InMemoryStore:
     def alias_indices(self, alias: str) -> List[str]:
         return sorted(self.aliases.get(alias, []))
 
-    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> None:
+    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> bool:
         members = self.aliases.setdefault(alias, [])
         for i in remove:
             if i in members:
@@ -124,6 +124,7 @@ class InMemoryStore:
                 raise KeyError(i)
             if i not in members:
                 members.append(i)
+        return True
 
 
 class OpenSearchStore:
@@ -186,11 +187,12 @@ class OpenSearchStore:
             return []
         return sorted(self.client.indices.get_alias(name=alias).keys())
 
-    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> None:
+    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> bool:
         actions = ([{"remove": {"index": i, "alias": alias}} for i in remove]
                    + [{"add": {"index": i, "alias": alias}} for i in add])
         if actions:  # one atomic swap, readers never see an empty alias
             self.client.indices.update_aliases(body={"actions": actions})
+        return True
 
 
 def open_store(url: str, alias: Optional[str] = None) -> OpenSearchStore:
