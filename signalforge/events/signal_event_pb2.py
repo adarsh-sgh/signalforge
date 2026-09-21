@@ -14,13 +14,13 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12signal_event.proto\x12\x0bsignalforge\"r\n\x0bSignalEvent\x12\x10\n\x08\x65vent_id\x18\x01 \x01(\t\x12\x11\n\tentity_id\x18\x02 \x01(\t\x12\x13\n\x0bsignal_type\x18\x03 \x01(\t\x12\r\n\x05score\x18\x04 \x01(\x01\x12\x0e\n\x06source\x18\x05 \x01(\t\x12\n\n\x02ts\x18\x06 \x01(\x03\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12signal_event.proto\x12\x0bsignalforge\"\x85\x01\n\x0bSignalEvent\x12\x10\n\x08\x65vent_id\x18\x01 \x01(\t\x12\x11\n\tentity_id\x18\x02 \x01(\t\x12\x13\n\x0bsignal_type\x18\x03 \x01(\t\x12\r\n\x05score\x18\x04 \x01(\x01\x12\x0e\n\x06source\x18\x05 \x01(\t\x12\n\n\x02ts\x18\x06 \x01(\x03\x12\x11\n\ttenant_id\x18\x07 \x01(\tb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'signal_event_pb2', _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._options = None
-  _globals['_SIGNALEVENT']._serialized_start=35
-  _globals['_SIGNALEVENT']._serialized_end=149
+  _globals['_SIGNALEVENT']._serialized_start=36
+  _globals['_SIGNALEVENT']._serialized_end=169
 # @@protoc_insertion_point(module_scope)

@@ -23,6 +23,13 @@ class Settings:
     # REDIS_URL (no SF_ prefix, the conventional name); empty disables the cache
     redis_url: str = field(default_factory=lambda: os.environ.get("REDIS_URL", ""))
     cache_ttl: int = field(default_factory=lambda: int(_env("CACHE_TTL", "60")))
+    # tenancy: comma list of tenants with their own daily index; "tenant=n" maps (routing partitions,
+    # max entities per day); a default quota of 0 means unlimited
+    dedicated_tenants: str = field(default_factory=lambda: _env("DEDICATED_TENANTS", ""))
+    routing_partitions: str = field(default_factory=lambda: _env("ROUTING_PARTITIONS", ""))
+    tenant_quota: str = field(default_factory=lambda: _env("TENANT_QUOTA", ""))
+    tenant_quota_default: int = field(default_factory=lambda: int(_env("TENANT_QUOTA_DEFAULT", "0")))
+    retention_days: int = field(default_factory=lambda: int(_env("RETENTION_DAYS", "30")))
 
 
 settings = Settings()

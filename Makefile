@@ -15,7 +15,7 @@ test:
 	$(PY) -m pytest -q
 
 bench:
-	$(PY) -m bench.bench --rows 1000000 $(SINK_FLAG)
+	$(PY) -m bench.bench --rows 1000000 $(SINK_FLAG) $(BENCH_ARGS)
 
 up:
 	docker compose up -d && docker compose exec redpanda rpk topic create signals -p 4 || true

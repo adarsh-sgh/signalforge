@@ -14,6 +14,7 @@ from signalforge.pipeline import transform
 from signalforge.pipeline.sink import write_dataframe
 from signalforge.search.store import SearchStore
 from signalforge.sinks import SINKS, open_sink
+from signalforge.tenancy import Quota, Router
 
 KAFKA_PKG = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3"
 
@@ -41,12 +42,12 @@ def read_parquet_events(spark: SparkSession, path: str, day: Optional[str] = Non
 
 
 def run_batch(spark: SparkSession, source: str, store: SearchStore, cfg: Settings = settings,
-              day: Optional[str] = None) -> int:
+              day: Optional[str] = None, quota: Optional[Quota] = None) -> int:
     """Replay archived events for one day (or all) and upsert the resulting documents."""
     t0 = time.time()
     events = read_parquet_events(spark, source, day)
     docs = transform.events_to_documents(events, cfg.window)
-    n = write_dataframe(store, cfg.index_prefix, docs)
+    n = write_dataframe(store, Router.from_settings(cfg), docs, quota or Quota.from_settings(cfg))
     BATCH_SECONDS.observe(time.time() - t0)
     return n
 
@@ -59,6 +60,7 @@ def run_stream(spark: SparkSession, store: SearchStore, cfg: Settings = settings
            .option("startingOffsets", "earliest")
            .load())
     events = transform.with_event_time(transform.decode_kafka(raw))
+    router, quota = Router.from_settings(cfg), Quota.from_settings(cfg)
 
     def archive(batch: DataFrame, _id: int) -> None:
         # Raw decoded events go to Parquet partitioned by day; the daily DAG compacts and re-indexes them.
@@ -72,7 +74,7 @@ def run_stream(spark: SparkSession, store: SearchStore, cfg: Settings = settings
         BATCH_SECONDS.observe(time.time() - t0)
 
     def upsert(batch: DataFrame, _id: int) -> None:
-        write_dataframe(store, cfg.index_prefix, transform.to_documents(batch))
+        write_dataframe(store, router, transform.to_documents(batch), quota)
 
     agg = transform.aggregate(transform.dedup(events, cfg.watermark), cfg.window)
     trigger = {"availableNow": True} if once else {"processingTime": "10 seconds"}

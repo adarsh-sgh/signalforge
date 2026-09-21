@@ -4,6 +4,8 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 EVENTS_DECODED = Counter("sf_events_decoded_total", "Protobuf events decoded")
 EVENTS_DROPPED = Counter("sf_events_dropped_total", "Undecodable or invalid events dropped")
 DOCS_UPSERTED = Counter("sf_docs_upserted_total", "Documents upserted into the sink", ["index"])
+QUOTA_DROPPED = Counter("sf_quota_dropped_total", "Documents dropped by the per-tenant entity quota", ["tenant"])
+INDICES_RETIRED = Counter("sf_indices_retired_total", "Daily indices deleted past retention", ["alias"])
 BATCH_SECONDS = Histogram("sf_batch_seconds", "Wall time per micro-batch / batch run")
 BATCH_ROWS = Gauge("sf_last_batch_rows", "Input rows in the most recent batch")
 

@@ -10,10 +10,14 @@ import pyarrow.parquet as pq
 from signalforge.producer import SIGNAL_TYPES, SOURCES
 
 
-def generate(path: str, rows: int, entities: int = 50_000, dup_ratio: float = 0.05, seed: int = 0) -> None:
+def generate(path: str, rows: int, entities: int = 50_000, dup_ratio: float = 0.05, seed: int = 0,
+             tenants: int = 200) -> None:
+    """Each entity belongs to one tenant; tenant sizes follow a Zipf curve, so t-000 alone owns ~15% of
+    entities (and rows) while most tenants are tiny."""
     rng = np.random.default_rng(seed)
     now = int(time.time() * 1000)
     ent = rng.integers(0, entities, rows)
+    tenant = np.minimum(rng.zipf(1.3, entities) - 1, tenants - 1)[ent]
     st = rng.integers(0, len(SIGNAL_TYPES), rows)
     src = rng.integers(0, len(SOURCES), rows)
     ts = now - rng.integers(0, 3 * 86_400_000, rows)
@@ -25,6 +29,7 @@ def generate(path: str, rows: int, entities: int = 50_000, dup_ratio: float = 0.
     day = (ts // 86_400_000).astype("datetime64[D]").astype(str)
     table = pa.table({
         "event_id": pa.array(event_id, pa.string()),
+        "tenant_id": pa.array(["t-%03d" % t for t in tenant], pa.string()),
         "entity_id": pa.array(["ent-%05d" % e for e in ent], pa.string()),
         "signal_type": pa.array([SIGNAL_TYPES[i] for i in st], pa.string()),
         "score": pa.array(score, pa.float64()),
@@ -40,6 +45,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="bench/out/events")
     ap.add_argument("--rows", type=int, default=1_000_000)
+    ap.add_argument("--tenants", type=int, default=200)
     a = ap.parse_args()
-    generate(a.out, a.rows)
+    generate(a.out, a.rows, tenants=a.tenants)
     print("wrote %d rows to %s" % (a.rows, a.out))

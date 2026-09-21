@@ -35,8 +35,9 @@ def kafka_producer(bootstrap: str) -> Producer:
     return _Producer({"bootstrap.servers": bootstrap, "linger.ms": 20, "acks": "all"})
 
 
-def synth_event(rng: random.Random, n_entities: int, now_ms: int) -> dict:
+def synth_event(rng: random.Random, n_entities: int, now_ms: int, n_tenants: int = 1) -> dict:
     return {
+        "tenant_id": "t-%02d" % rng.randrange(n_tenants) if n_tenants > 1 else "default",
         "entity_id": "ent-%04d" % rng.randrange(n_entities),
         "signal_type": rng.choice(SIGNAL_TYPES),
         "score": round(rng.gauss(3.5, 1.0), 3),
@@ -46,7 +47,7 @@ def synth_event(rng: random.Random, n_entities: int, now_ms: int) -> dict:
 
 
 def publish(producer: Producer, topic: str, n: int, n_entities: int = 200, seed: int = 0,
-            duplicate_ratio: float = 0.05, rate: float = 0.0) -> int:
+            duplicate_ratio: float = 0.05, rate: float = 0.0, n_tenants: int = 1) -> int:
     """Emit n synthetic events; a slice are re-sent verbatim to exercise downstream dedup."""
     rng = random.Random(seed)
     now_ms = int(time.time() * 1000)
@@ -56,8 +57,9 @@ def publish(producer: Producer, topic: str, n: int, n_entities: int = 200, seed:
         if last is not None and rng.random() < duplicate_ratio:
             ev = last
         else:
-            ev = last = synth_event(rng, n_entities, now_ms)
-        producer.produce(topic, key=ev["entity_id"].encode(), value=encode(**ev))
+            ev = last = synth_event(rng, n_entities, now_ms, n_tenants)
+        # key by tenant so a tenant's events stay ordered within one partition
+        producer.produce(topic, key=ev["tenant_id"].encode(), value=encode(**ev))
         sent += 1
         if rate > 0:
             time.sleep(1.0 / rate)
@@ -69,11 +71,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--n", type=int, default=1000)
     ap.add_argument("--entities", type=int, default=200)
+    ap.add_argument("--tenants", type=int, default=4)
     ap.add_argument("--rate", type=float, default=0, help="events/sec, 0 = as fast as possible")
     ap.add_argument("--seed", type=int, default=int(time.time()))
     args = ap.parse_args()
     sent = publish(kafka_producer(settings.kafka_bootstrap), settings.kafka_topic,
-                   args.n, args.entities, args.seed, rate=args.rate)
+                   args.n, args.entities, args.seed, rate=args.rate, n_tenants=args.tenants)
     print("published %d events to %s" % (sent, settings.kafka_topic))
 
 

@@ -3,7 +3,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-from signalforge.events.codec import decode
+from signalforge.events.codec import DEFAULT_TENANT, decode
 
 EVENT_SCHEMA = T.StructType([
     T.StructField("event_id", T.StringType(), False),
@@ -12,6 +12,7 @@ EVENT_SCHEMA = T.StructType([
     T.StructField("score", T.DoubleType(), True),
     T.StructField("source", T.StringType(), True),
     T.StructField("ts", T.LongType(), False),
+    T.StructField("tenant_id", T.StringType(), True),  # nullable: archives written before tenancy lack it
 ])
 
 # Archive layout: events plus the `day` partition column.
@@ -29,6 +30,7 @@ def decode_kafka(raw: DataFrame) -> DataFrame:
 
 def with_event_time(events: DataFrame) -> DataFrame:
     return (events
+            .withColumn("tenant_id", F.coalesce(F.col("tenant_id"), F.lit(DEFAULT_TENANT)))
             .withColumn("event_time", F.timestamp_millis(F.col("ts")))
             .withColumn("day", F.date_format("event_time", "yyyy-MM-dd")))
 
@@ -41,9 +43,9 @@ def dedup(events: DataFrame, watermark: str = None) -> DataFrame:
 
 
 def aggregate(events: DataFrame, window: str = "1 day") -> DataFrame:
-    """Per-entity rollup per tumbling window. Single aggregation so it works in update mode."""
+    """Per-(tenant, entity) rollup per tumbling window. Single aggregation so it works in update mode."""
     return (events
-            .groupBy("entity_id", F.window("event_time", window).alias("w"))
+            .groupBy("tenant_id", "entity_id", F.window("event_time", window).alias("w"))
             .agg(F.count("*").alias("n"),
                  F.avg("score").alias("mean_score"),
                  F.min("score").alias("min_score"),

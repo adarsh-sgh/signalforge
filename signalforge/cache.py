@@ -8,11 +8,12 @@ import time
 from typing import Callable, Dict, Iterable, List, Optional, Protocol
 
 from signalforge.metrics import CACHE_LOOKUPS
-from signalforge.search.store import SearchStore, day_of
+from signalforge.search.store import SearchStore, day_of, doc_key
 
 
-def cache_key(entity_id: str, day: str) -> str:
-    return "entity:%s:%s" % (entity_id, day)
+def cache_key(doc_id: str, day: str) -> str:
+    """doc_id is `tenant:entity`, so keys are tenant-scoped."""
+    return "entity:%s:%s" % (doc_id, day)
 
 
 class Cache(Protocol):
@@ -70,33 +71,45 @@ class CachedStore:
     def __init__(self, store: SearchStore, cache: Cache, ttl: int = 60) -> None:
         self.store, self.cache, self.ttl = store, cache, ttl
 
-    def ensure_index(self, index: str) -> None:
-        self.store.ensure_index(index)
+    def ensure_index(self, index: str, shards: Optional[int] = None) -> None:
+        self.store.ensure_index(index, shards)
 
-    def bulk_upsert(self, index: str, docs: Iterable[Dict]) -> int:
+    def bulk_upsert(self, index: str, docs: Iterable[Dict], routing: Optional[str] = None) -> int:
         docs = list(docs)
-        n = self.store.bulk_upsert(index, docs)
+        n = self.store.bulk_upsert(index, docs, routing=routing)
         # Evict rather than write through: most rollups are never read before the next batch replaces them.
-        self.cache.delete(cache_key(d["entity_id"], day_of(index)) for d in docs)
+        self.cache.delete(cache_key(doc_key(d), day_of(index)) for d in docs)
         return n
 
-    def get(self, index: str, doc_id: str) -> Optional[Dict]:
+    def get(self, index: str, doc_id: str, routing: Optional[str] = None) -> Optional[Dict]:
         key = cache_key(doc_id, day_of(index))
         doc = self.cache.get(key)
         if doc is not None:
             CACHE_LOOKUPS.labels(result="hit").inc()
             return doc
         CACHE_LOOKUPS.labels(result="miss").inc()
-        doc = self.store.get(index, doc_id)
+        doc = self.store.get(index, doc_id, routing)
         if doc is not None:
             self.cache.set(key, doc, self.ttl)
         return doc
 
-    def mget(self, indices: List[str], doc_id: str) -> List[Dict]:
-        return self.store.mget(indices, doc_id)
+    def mget(self, indices: List[str], doc_id: str, routing: Optional[str] = None) -> List[Dict]:
+        return self.store.mget(indices, doc_id, routing)
 
     def count(self, index: str) -> int:
         return self.store.count(index)
 
     def refresh(self, index: str) -> None:
         self.store.refresh(index)
+
+    def list_indices(self, pattern: str) -> List[str]:
+        return self.store.list_indices(pattern)
+
+    def delete_index(self, index: str) -> None:
+        self.store.delete_index(index)
+
+    def alias_indices(self, alias: str) -> List[str]:
+        return self.store.alias_indices(alias)
+
+    def update_alias(self, alias: str, add: List[str], remove: List[str]) -> None:
+        self.store.update_alias(alias, add, remove)

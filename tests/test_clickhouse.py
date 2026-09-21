@@ -41,7 +41,8 @@ class _Client:
         self.queries.append((sql, parameters))
         rows = [dict(zip(cols, r)) for _, data, cols in self.inserts for r in data]
         days = parameters.get("days", [parameters.get("day")])
-        rows = [r for r in rows if r["day"] in days and r["entity_id"] == parameters.get("entity_id", r["entity_id"])]
+        rows = [r for r in rows if r["day"] in days and r["entity_id"] == parameters.get("entity_id", r["entity_id"])
+                and r["tenant_id"] == parameters.get("tenant_id", r["tenant_id"])]
 
         class Result:
             result_rows = [(len(rows),)]
@@ -55,7 +56,7 @@ class _Client:
 def test_generated_sql_and_row_roundtrip():
     client = _Client()
     store = ClickHouseStore(client=client)
-    doc = {"entity_id": "ent-1", "day": D1, "window_start": D1 + "T00:00:00Z", "window_end": D2 + "T00:00:00Z",
+    doc = {"tenant_id": "default", "entity_id": "ent-1", "day": D1, "window_start": D1 + "T00:00:00Z", "window_end": D2 + "T00:00:00Z",
            "n": 3, "mean_score": 3.6667, "min_score": 2.0, "max_score": 5.0, "stddev_score": 1.2472,
            "last_score": 5.0, "last_ts": 1788400800000, "signal_types": ["review", "rating"], "sources": ["web"]}
 
@@ -64,22 +65,22 @@ def test_generated_sql_and_row_roundtrip():
     ddl = client.commands[0]
     assert ddl.startswith("CREATE TABLE IF NOT EXISTS signals_daily")
     assert "ENGINE = ReplacingMergeTree(updated_at)" in ddl
-    assert "PARTITION BY day" in ddl and "ORDER BY (day, entity_id)" in ddl
+    assert "PARTITION BY day" in ddl and "ORDER BY (day, tenant_id, entity_id)" in ddl
     assert len(client.commands) == 1  # DDL once per store
     table, rows, cols = client.inserts[0]
     assert table == "signals_daily" and cols == COLUMNS and len(client.inserts) == 1
-    assert rows[0][0] == dt.date.fromisoformat(D1) and rows[0][2] == dt.datetime(2026, 9, 3, tzinfo=dt.timezone.utc)
+    assert rows[0][0] == dt.date.fromisoformat(D1) and rows[0][3] == dt.datetime(2026, 9, 3, tzinfo=dt.timezone.utc)
     assert isinstance(rows[0][-1], dt.datetime)  # version column drives ReplacingMergeTree
 
-    assert store.get("test-%s" % D1, "ent-1") == doc
-    assert store.get("test-%s" % D1, "ent-9") is None
-    assert store.mget(["test-%s" % D1, "test-%s" % D2], "ent-1") == [doc]
+    assert store.get("test-%s" % D1, "default:ent-1", "default") == doc
+    assert store.get("test-%s" % D1, "default:ent-9") is None
+    assert store.mget(["test-%s" % D1, "test-%s" % D2], "default:ent-1") == [doc]
     assert store.count("test-%s" % D1) == 1
     store.refresh("test-%s" % D1)
     get_sql, get_params = client.queries[0]
-    assert get_sql.startswith("SELECT day, entity_id, ") and " FROM signals_daily FINAL WHERE " in get_sql
-    assert "day = {day:Date} AND entity_id = {entity_id:String}" in get_sql
-    assert get_params == {"day": dt.date.fromisoformat(D1), "entity_id": "ent-1"}
+    assert get_sql.startswith("SELECT day, tenant_id, entity_id, ") and " FROM signals_daily FINAL WHERE " in get_sql
+    assert "day = {day:Date} AND tenant_id = {tenant_id:String} AND entity_id = {entity_id:String}" in get_sql
+    assert get_params == {"day": dt.date.fromisoformat(D1), "tenant_id": "default", "entity_id": "ent-1"}
     assert "day IN {days:Array(Date)}" in client.queries[2][0]
     assert client.queries[3][0] == "SELECT count() FROM signals_daily FINAL WHERE day = {day:Date}"
     assert client.commands[1] == "OPTIMIZE TABLE signals_daily PARTITION ID '20260903' FINAL"

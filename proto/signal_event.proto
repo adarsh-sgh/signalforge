@@ -10,4 +10,5 @@ message SignalEvent {
   double score       = 4;
   string source      = 5;  // originating system
   int64  ts          = 6;  // event time, epoch millis
+  string tenant_id   = 7;  // owning tenant; empty means "default"
 }

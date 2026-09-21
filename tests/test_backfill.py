@@ -16,7 +16,7 @@ def test_compact_reindex_verify(spark, cfg):
 
     store = InMemoryStore()
     assert backfill.reindex_day(spark, D1, store, cfg) == 2
-    assert store.get("test-%s" % D1, "ent-1")["n"] == 3  # compaction kept every row
+    assert store.get("test-%s" % D1, "default:ent-1", "default")["n"] == 3  # compaction kept every row
     assert backfill.verify_day(D1, store, expected=2, cfg=cfg) == 2
     with pytest.raises(RuntimeError):
         backfill.verify_day(D1, store, expected=3, cfg=cfg)

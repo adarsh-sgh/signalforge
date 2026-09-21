@@ -19,10 +19,14 @@ _MS = 86_400_000
 _T1 = 1788393600000  # 2026-09-03T00:00:00Z
 
 
-def ev(entity, stype, score, source, offset_ms, event_id=None):
+def ev(entity, stype, score, source, offset_ms, event_id=None, tenant=None):
+    """tenant=None leaves the column out, like archives written before tenancy existed."""
     ts = _T1 + offset_ms
-    return {"event_id": event_id or make_event_id(entity, stype, source, ts), "entity_id": entity,
-            "signal_type": stype, "score": score, "source": source, "ts": ts}
+    e = {"event_id": event_id or make_event_id(entity, stype, source, ts, tenant or "default"), "entity_id": entity,
+         "signal_type": stype, "score": score, "source": source, "ts": ts}
+    if tenant is not None:
+        e["tenant_id"] = tenant
+    return e
 
 
 # Two entities over two days; the last row is an exact redelivery of the first.

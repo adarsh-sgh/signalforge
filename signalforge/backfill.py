@@ -8,7 +8,8 @@ from pyspark.sql import SparkSession
 
 from signalforge.config import Settings, settings
 from signalforge.pipeline.job import run_batch
-from signalforge.search.store import SearchStore, index_name
+from signalforge.search.store import SearchStore
+from signalforge.tenancy import Router
 
 
 def day_path(archive_dir: str, day: str) -> str:
@@ -40,9 +41,11 @@ def reindex_day(spark: SparkSession, day: str, store: SearchStore, cfg: Settings
 
 
 def verify_day(day: str, store: SearchStore, expected: int, cfg: Settings = settings) -> int:
-    idx = index_name(cfg.index_prefix, day)
-    store.refresh(idx)
-    got = store.count(idx)
+    """Doc count across the pooled index and every dedicated tenant's index for the day."""
+    got = 0
+    for idx in Router.from_settings(cfg).day_indices(day):
+        store.refresh(idx)
+        got += store.count(idx)
     if got < expected:
-        raise RuntimeError("%s has %d docs, expected >= %d" % (idx, got, expected))
+        raise RuntimeError("%s has %d docs, expected >= %d" % (day, got, expected))
     return got
