@@ -32,6 +32,14 @@ def index_name(prefix: str, day: str) -> str:
     return "%s-%s" % (prefix, day)
 
 
+def day_of(index: str) -> str:
+    """Inverse of index_name; other sinks key on the day only."""
+    day = index[-10:]
+    if not _DAY_RE.match(day):
+        raise ValueError("no day in index name %r" % index)
+    return day
+
+
 class SearchStore(Protocol):
     def ensure_index(self, index: str) -> None: ...
     def bulk_upsert(self, index: str, docs: Iterable[Dict]) -> int: ...

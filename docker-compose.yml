@@ -24,3 +24,18 @@ services:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 5s
       retries: 30
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    ports:
+      - "8123:8123"   # http (clickhouse-connect)
+      - "9000:9000"   # native
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
+      interval: 5s
+      retries: 30
+

@@ -12,7 +12,8 @@ from signalforge.config import Settings, settings
 from signalforge.metrics import BATCH_ROWS, BATCH_SECONDS, EVENTS_DECODED, serve
 from signalforge.pipeline import transform
 from signalforge.pipeline.sink import write_dataframe
-from signalforge.search.store import SearchStore, open_store
+from signalforge.search.store import SearchStore
+from signalforge.sinks import SINKS, open_sink
 
 KAFKA_PKG = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3"
 
@@ -90,10 +91,11 @@ def main() -> None:
     ap.add_argument("--source", default=settings.archive_dir, help="parquet dir for batch mode")
     ap.add_argument("--day", default=None, help="restrict batch mode to one yyyy-MM-dd")
     ap.add_argument("--once", action="store_true", help="stream: drain what is there and exit")
+    ap.add_argument("--sink", choices=SINKS, default=settings.sink, help="rollup store (env SF_SINK)")
     args = ap.parse_args()
 
     serve(settings.metrics_port)
-    store = open_store(settings.opensearch_url, alias=settings.index_prefix)
+    store = open_sink(settings, args.sink)
     spark = build_spark(kafka=args.mode == "stream")
     if args.mode == "batch":
         print("upserted %d documents" % run_batch(spark, args.source, store, day=args.day))

@@ -1,4 +1,5 @@
-"""Read API over the per-day indices. Point lookups only; no scoring logic lives here."""
+"""Read API over the per-day rollups (SF_SINK picks the store).
+Point lookups only; no scoring logic lives here."""
 import datetime as dt
 import time
 from typing import Optional
@@ -8,7 +9,8 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from signalforge.config import settings
 from signalforge.metrics import HTTP_LATENCY, HTTP_REQUESTS
-from signalforge.search.store import SearchStore, index_name, open_store
+from signalforge.search.store import SearchStore, index_name
+from signalforge.sinks import open_sink
 
 
 def _today() -> str:
@@ -68,7 +70,7 @@ def create_app(store: SearchStore, prefix: str = settings.index_prefix) -> FastA
 def main() -> None:
     import uvicorn
 
-    uvicorn.run(create_app(open_store(settings.opensearch_url, settings.index_prefix)),
+    uvicorn.run(create_app(open_sink(settings)),
                 host="0.0.0.0", port=settings.api_port)
 
 

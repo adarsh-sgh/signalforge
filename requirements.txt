@@ -4,6 +4,7 @@ protobuf>=4.25,<5
 grpcio-tools>=1.60,<1.63
 confluent-kafka>=2.3,<3
 opensearch-py>=2.4,<3
+clickhouse-connect>=0.8,<0.9
 fastapi>=0.110,<0.116
 pydantic>=2.6,<2.11
 uvicorn>=0.27,<0.31
