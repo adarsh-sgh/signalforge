@@ -1,18 +1,23 @@
 # signalforge
 
 Streaming aggregation of per-entity signal scores (product review signals, sensor readings, ...).
-Protobuf events go through Kafka into a PySpark Structured Streaming job that dedups, windows and
-rolls them up per (tenant, entity); the rollups land in OpenSearch (one index per day, one document per
-entity) or, with `--sink clickhouse`, in a single ClickHouse `ReplacingMergeTree` table. Small tenants
+Protobuf events go through Redpanda (Kafka API) into two independent consumers: a PySpark Structured
+Streaming job that dedups, windows and rolls them up per (tenant, entity), and a PyFlink job that
+scores the same stream for anomalies with a rolling z-score or EWMA baseline. The Spark rollups land
+in OpenSearch (one index per day, one document per entity) or, with `--sink clickhouse`, in a single
+ClickHouse `ReplacingMergeTree` table, and -- when `SF_LAKE_PATH` is set -- also in a Delta table on
+S3-compatible storage that Trino queries. Trino sits behind an admission guard that refuses or
+throttles abusive statements before they reach the coordinator. Small tenants
 share the daily index and are pinned to a shard by `_routing`; tenants named in `SF_DEDICATED_TENANTS`
 get their own daily index, and a per-tenant quota caps how many entities a tenant may roll up per day.
 A small FastAPI service serves point lookups from whichever sink is configured, optionally through a
 Redis read-through cache. An Airflow DAG compacts each day's Parquet archive, rebuilds that day's
-rollups from it, then rolls the read aliases forward and retires indices past retention.
+rollups and Delta partition from it, checks every dataset against its freshness SLO and heals what
+breached, then rolls the read aliases forward and retires indices past retention.
 `signalforge.capacity` turns an event rate and retention into shards, nodes and a monthly bill.
 
 ```
-producer ──protobuf──> Kafka (redpanda) ──> Spark Structured Streaming ──upsert──> OpenSearch ──────> FastAPI
+producer ──protobuf──> Redpanda (Kafka API) ──> Spark Structured Streaming ──upsert──> OpenSearch ──────> FastAPI
                                               │  decode UDF · dedup(event_id)   │  pooled: signals-YYYY-MM-DD  │  /tenants/{t}/entities/{id}
                                               │  window(1 day) · agg per        │    _routing = tenant         │  /tenants/{t}/entities/{id}/history
                                               │  (tenant, entity) · quota       │  dedicated: signals-{t}-YYYY-MM-DD
@@ -23,7 +28,19 @@ producer ──protobuf──> Kafka (redpanda) ──> Spark Structured Streami
                                               │                                      (day, tenant, entity) ──evict──> Redis (REDIS_URL)
                                               └──append──> Parquet archive (day=…)                               entity:{t}:{id}:{day}, TTL
                                                               │
-                                     Airflow (daily) ─────────┴─> compact ─> re-index ─> verify ─> rollover (alias window, retire)
+                                     Airflow (daily) ─────────┴─> compact ─> re-index ─> verify ─> sla_check ─> rollover
+                                                                                            (heal breaches)  (alias window, retire)
+
+Redpanda `signals` ──> PyFlink anomaly job ──> `signal_anomalies` (JSON)
+                         │  decode · watermarks (bounded out-of-orderness)
+                         │  tumbling window per (tenant, entity): n/sum/min/max
+                         │  keyed detector state: rolling z-score | EWMA
+                         └──late (allowed lateness 0)──> `signal_late`
+
+Spark rollups ──append/replaceWhere──> Delta table on S3 (partition by day) ──> Trino (delta_lake, file metastore)
+                                                                                  ^
+                                        analyst ──POST /v1/queries──> admission guard ──┘
+                                                   403 rule · 429 Retry-After · jsonl audit
 ```
 
 The same transform code runs in both modes: `--mode stream` reads Kafka, `--mode batch` replays a
@@ -33,11 +50,14 @@ Parquet directory. Prometheus metrics are exposed by the Spark driver (`:9108`) 
 
 ```
 make venv          # python3.9 venv + deps (needs Java 17 for pyspark)
-make test          # 18 tests, no docker: pyspark local mode, in-memory OpenSearch/ClickHouse/Redis/Kafka fakes
+make test          # 43 tests, no docker: pyspark local mode, delta on a tmp path, in-memory
+                   #   OpenSearch/ClickHouse/Redis/Kafka/Trino fakes
+make flink-test    # 5 more on a local Flink MiniCluster, inside a linux/amd64 image
 make bench         # 1M synthetic rows (200 Zipf-sized tenants) through the batch path; SINK=clickhouse for that fake
 make bench BENCH_ARGS="--dedicated t-000 --quota 2000"   # + per-index fan-out, routing keys, quota hits, doc size
 
-make up            # redpanda + opensearch + clickhouse + redis via docker compose
+make up            # redpanda + opensearch + clickhouse + redis + s3 + trino + flink via docker compose
+make smoke         # the whole stack end to end; prints every number in the table below
 make produce       # 5000 protobuf events (5% redelivered, 4 tenants) -> topic `signals`
 make stream        # Kafka -> OpenSearch, keeps running; add --once to drain and exit
 make api           # http://localhost:8000/entities/ent-0001  (SF_API_PORT to change)
@@ -53,9 +73,52 @@ SF_DEDICATED_TENANTS=acme SF_ROUTING_PARTITIONS=beta=4 SF_TENANT_QUOTA=beta=5000
   make stream      # acme gets signals-acme-<day>; beta is spread over 4 routing keys and capped at 50k entities/day
 SF_RETENTION_DAYS=30 SF_INDEX_SHARDS=pooled=3,acme=6 make airflow   # rollover task: aliases + retirement + pre-create
 
+make flink-job                              # submit the anomaly job to the compose cluster
+make flink-job FLINK_ARGS="--mode ewma --threshold 2.5 --window-ms 5000"
+SF_ANOMALY_METRIC=event_rate make flink-job   # watch volume instead of mean score
+
+SF_LAKE_PATH=s3a://lake/signals_daily make stream SINK=clickhouse   # + the Delta leg on S3
+make lake-register                          # give that table a name Trino can query
+make trino-sql SQL="SELECT day, count(*) FROM delta.signals.signals_daily GROUP BY day"
+make guard                                  # admission service on :8010 in front of Trino
+curl -s localhost:8010/v1/queries -H 'x-trino-user: analyst' -d \
+  '{"sql":"SELECT entity_id FROM delta.signals.signals_daily WHERE day = '"'"'2026-09-25'"'"' LIMIT 5"}'
+curl -s localhost:8010/v1/summary            # decisions, bytes refused, bytes actually scanned
+SF_TRINO_MAX_SCAN_BYTES=2097152 SF_TRINO_MAX_CONCURRENT=2 SF_TRINO_AUDIT_FILE=data/audit.jsonl make guard
+
+SF_SLA="archive:5400,lake:5400:1000,serving:3600" make airflow   # sla_check heals breaches
+python scripts/e2e.py sla --day 2026-09-25 --sink clickhouse --heal
+
 python -m signalforge.capacity --events-per-sec 20000 --entities-per-day 2000000 --retention-days 30 \
   --doc-bytes 337 --dedicated-tenants 20 --dedicated-share 0.4 --node-type r6g.xlarge.search
 ```
+
+## Measured
+
+Everything below comes from `make smoke` on one Apple M-series laptop with the full compose stack
+(Redpanda, SeaweedFS S3, ClickHouse, Redis, Trino 476, Flink 2.1.3) running beside the driver, so the
+numbers are a laptop's numbers, not a cluster's.
+
+| leg | measured |
+|-----|----------|
+| producer -> Redpanda | 200,000 protobuf events in 0.82 s, **245k events/s**, one producer |
+| Redpanda -> Spark -> ClickHouse **and** Delta on S3 | 416,504 events replayed in 13.4 s, **31.0k events/s**, 32,000 rollup documents |
+| PyFlink anomaly job | **6.1k events/s** at parallelism 1, **12.2k/s** at parallelism 4 (see the caveat below) |
+| nightly `replaceWhere` re-index | lake partitions 31,988 -> 15,994 and 48,018 -> 16,006 rows, ClickHouse unchanged |
+| Trino over the Delta table | same 15,994 / 16,006 rollups per day as the serving store |
+| Trino IO estimate, full scan vs one day | 1.7 MiB vs 859.7 KiB -- the guard's partition rule is worth ~2x here |
+| admission guard, 8-query workload | 3 admitted, 5 refused; **12.7 MiB of estimated scan refused** vs 1.2 MiB actually processed |
+| freshness sweep | 2 stale datasets (309 s and 274 s against a 60 s budget), both healed by rebuilding 16,006 rows |
+
+The Flink number carries a real caveat: apache-flink publishes x86_64-only Linux wheels, so on this
+arm64 laptop the job runs under emulation and the per-record Python path pays for it. It is a floor,
+not a ceiling, and the shape (roughly 2x from 1 to 4 slots) is the informative part. The p=4 run
+drained a backlog as well as the 200k it was given, so its rate is if anything conservative.
+
+One anomaly run, end to end: 14 quiet 2-second windows at mean 3.5 then one window at 12.0 produced
+exactly one anomaly on `signal_anomalies` (`value=12.00 baseline=3.55 z=169.0 detector=zscore`), and
+the straggler stamped 28 windows in the past arrived on `signal_late` instead of silently changing a
+closed window.
 
 Bench on an M-series laptop, `local[*]`, 1M rows over 200 tenants -> 184,100 documents
 (dedup + day window + 9 aggregates per (tenant, entity), routing per document, sink to the in-memory fake):
@@ -128,6 +191,85 @@ is the number that argues for pooling small tenants behind `_routing`.
 - Session timezone is pinned to UTC so window boundaries, index names, ClickHouse `Date` partitions
   and API `day` params agree; window timestamps go into ClickHouse tz-aware so the driver never
   re-interprets them in the process's local zone.
+- Anomaly detection is deliberately two pieces: `signalforge.anomaly` is pure -- `update(state, stat,
+  cfg) -> (state, anomaly?)` over a picklable `DetectorState` -- and `signalforge.flink.anomaly_job`
+  is the wiring. That is what lets the same detector run inside a Flink keyed operator (state as JSON
+  in `ValueState`), in a batch replay, and in tests, and it is why one test can assert the Flink job
+  emits exactly what `Detector.run(window_stats(...))` does on the same input. Two baselines:
+  `zscore` keeps the last `history` window values (bounded memory, reacts sharply), `ewma` keeps a
+  smoothed mean and variance (O(1) state, forgets regime changes faster). Every window is folded into
+  the baseline whether or not it alerted, so a sustained shift alerts once and then becomes the new
+  normal rather than paging every window; coming back to the old level alerts again.
+- The Flink window runs with `allowed_lateness = 0` and a late side output rather than a lateness
+  budget. With a budget, a straggler re-fires an already-closed window *after* later windows have
+  already advanced the detector's baseline, so the baseline would see windows out of order and its
+  variance would be wrong. Late events go to `signal_late` and are picked up by the nightly Spark
+  replay of the Parquet archive, which recomputes the day from scratch and does not care about order.
+- PyFlink's `TypeInformation` objects cannot be cloudpickled once they have been handed to the JVM,
+  so the late-data `OutputTag` gets a freshly built type each time `anomaly_pipeline` runs. And
+  `build_env` pins `RuntimeExecutionMode.STREAMING`: `AUTOMATIC` runs a bounded source in batch mode,
+  where watermarks never advance mid-stream and nothing is ever late.
+- Lakehouse and serving store are separate on purpose. ClickHouse keeps one collapsed row per
+  (day, tenant, entity) for millisecond point lookups; the Delta table keeps every commit so a query
+  can time-travel to what a dashboard saw yesterday (`versionAsOf`, `timestampAsOf`) and a new column
+  can be added with `mergeSchema` without rewriting history -- old files keep the old schema and read
+  back as nulls. The streaming leg *appends* (it is a log), so a full replay duplicates rows on the
+  lake while ReplacingMergeTree keeps the serving store correct; the nightly re-index writes the day
+  with `replaceWhere day = '...'`, which is what reconciles the two. The numbers above show that
+  round trip: 48,018 rows collapsing back to 16,006.
+- The Delta connector runs on a *file* metastore (`hive.metastore=file`) rather than a Hive Metastore
+  container, so the only extra step is `register_table` to give the table Spark wrote a name. One
+  fewer service to run locally, and it makes the point that the catalog is not the interesting part.
+- Query governance is split into what can be decided offline and what needs the coordinator.
+  `signalforge.trino.plan` parses with sqlglot (Trino dialect) and answers: which tables, which of
+  their columns are *pruned* on, is there a bare `*` without a LIMIT, is there a join with no
+  condition. "Pruned on" means a sargable predicate -- a bare column against a literal with `=`,
+  `IN`, `BETWEEN` or an inequality -- because `WHERE day <> '...'` and `WHERE substr(day,1,7) = '...'`
+  mention the partition column and still read every partition. A star inside a function is not a
+  `SELECT *`, or `count(*)` would be the most-refused query in the workload.
+- The byte budget uses Trino's own answer, not a guess: `EXPLAIN (TYPE IO, FORMAT JSON)` returns a
+  per-input-table `estimate.outputSizeInBytes`, which is planning only and reads no data. It is
+  genuinely an estimate and is absent (NaN) when the connector has no statistics, so a missing
+  estimate never becomes a rejection -- that rule simply does not fire. The estimate is taken
+  *before* the structural rules so a refusal can be costed, which is what makes "bytes the guard
+  refused" a number rather than a count.
+- Refusal and throttling are different answers. A query that can never be allowed as written
+  (no partition predicate, over budget, cross join, `SELECT *` with no LIMIT, not a read) is 403 with
+  the rule that fired; a user who is simply at their concurrency cap is 429 with `Retry-After`, and
+  their slot is released in a `finally` so a query that fails inside Trino does not leak capacity.
+  Every decision and every outcome goes to an append-only JSONL audit, so the estimates can be
+  checked against `processedBytes` afterwards and the budget calibrated instead of guessed.
+- Self-healing leans on every sink already being idempotent: upsert-by-id on OpenSearch,
+  `ReplacingMergeTree` on ClickHouse, `replaceWhere` on Delta. That makes "re-run the day" a safe
+  default repair, so `sla_check` can take it without a human. It is bounded on purpose --
+  `max_attempts` per (dataset, day) with a backoff, then the breach escalates and fails the task. A
+  pipeline that silently retries a permanently broken day is worse than one that pages someone.
+  A handler that raises is one failed attempt, not an aborted sweep, so one broken dataset does not
+  hide the others.
+- Freshness is measured from each dataset's own write record, not a side table: the newest Parquet
+  file's mtime for the archive, the newest Delta commit for the lake, and the row count plus the
+  caller's write time for the serving store. If the nightly replay never ran, the newest commit is
+  yesterday's, and that is exactly the signal wanted.
+
+## Not done
+
+- No Ray Serve endpoint and no MLflow-registered detector. The detector is six numbers of state and a
+  z-score, so serving it over HTTP would be ceremony rather than engineering; a learned detector
+  would change that.
+- No Superset dashboard definition. Trino is the query layer and `make trino-sql` exercises it; a
+  Superset YAML that nothing in the repo starts would be a claim without code behind it.
+- No Apache Ranger. The guard does admission control (which statements run), not row/column
+  authorization, and wiring a Ranger plugin needs a Java plugin and a Ranger admin service.
+- Governance is an admission *proxy*, not a Trino event listener. An event listener plugin would see
+  every query including ones submitted straight to the coordinator, but it is a Java SPI, and it
+  observes after the fact -- it cannot refuse. The proxy can refuse, at the cost of being bypassable
+  by anyone who talks to :8080 directly.
+- `sla_check` keeps its attempt counters in the scheduler process, so a scheduler restart resets a
+  day to attempt 1. Wrong direction for a hard cap, right direction for not wedging a pipeline.
+- The PyFlink late-data path is verified against Redpanda (`scripts/e2e.py anomaly`), not in the
+  MiniCluster tests: a bounded `from_collection` source never advances a watermark mid-stream, so
+  nothing in it is ever late. The tests assert the window/detector semantics and that the late stream
+  is wired and empty for in-order input.
 
 ## Next
 
@@ -136,3 +278,8 @@ is the number that argues for pooling small tenants behind `_routing`.
   dominates the profile.
 - Quota state survives a driver restart only via checkpoint replay; seed it from the index on start.
 - Move a tenant between pooled and dedicated without a reindex (write to both, switch the alias).
+- Feed `signal_anomalies` back into the serving store so the API can answer "was this entity
+  anomalous today" without a Trino query.
+- Seed the Flink detector state from the last day of rollups on start, so a fresh job does not spend
+  `min_samples` windows warming up per key.
+- Have the guard learn its budget: the audit already has estimate-vs-actual pairs per query shape.
