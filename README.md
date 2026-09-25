@@ -50,8 +50,9 @@ Parquet directory. Prometheus metrics are exposed by the Spark driver (`:9108`) 
 
 ```
 make venv          # python3.9 venv + deps (needs Java 17 for pyspark)
-make test          # 43 tests, no docker: pyspark local mode, delta on a tmp path, in-memory
-                   #   OpenSearch/ClickHouse/Redis/Kafka/Trino fakes
+make test          # 43 tests, no docker: pyspark local mode, a real delta table on a tmp path,
+                   #   in-memory OpenSearch/ClickHouse/Redis/Kafka/Trino fakes (the DAG-wiring test
+                   #   skips until `make airflow` has installed airflow)
 make flink-test    # 5 more on a local Flink MiniCluster, inside a linux/amd64 image
 make bench         # 1M synthetic rows (200 Zipf-sized tenants) through the batch path; SINK=clickhouse for that fake
 make bench BENCH_ARGS="--dedicated t-000 --quota 2000"   # + per-index fan-out, routing keys, quota hits, doc size
