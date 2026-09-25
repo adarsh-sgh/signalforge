@@ -33,6 +33,11 @@ stream:
 batch:
 	$(PY) -m signalforge.pipeline.job --mode batch --source data/archive $(if $(DAY),--day $(DAY)) $(SINK_FLAG)
 
+# same job, plus the Delta leg on MinIO: SF_LAKE_PATH=s3a://lake/signals_daily
+lake-batch:
+	SF_LAKE_PATH=$(or $(LAKE),s3a://lake/signals_daily) \
+	  $(PY) -m signalforge.pipeline.job --mode batch --source data/archive $(if $(DAY),--day $(DAY)) $(SINK_FLAG)
+
 api:
 	$(if $(SINK),SF_SINK=$(SINK)) $(PY) -m signalforge.api.app
 

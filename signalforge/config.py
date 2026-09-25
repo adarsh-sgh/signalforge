@@ -45,6 +45,12 @@ class Settings:
     anomaly_lateness_ms: int = field(default_factory=lambda: int(_env("ANOMALY_LATENESS_MS", "5000")))
     anomaly_topic: str = field(default_factory=lambda: _env("ANOMALY_TOPIC", "signal_anomalies"))
     anomaly_late_topic: str = field(default_factory=lambda: _env("ANOMALY_LATE_TOPIC", "signal_late"))
+    # delta lake on s3-compatible storage; empty lake_path disables the lake leg
+    lake_path: str = field(default_factory=lambda: _env("LAKE_PATH", ""))
+    lake_table: str = field(default_factory=lambda: _env("LAKE_TABLE", "signals_daily"))
+    s3_endpoint: str = field(default_factory=lambda: _env("S3_ENDPOINT", "http://localhost:9000"))
+    s3_access_key: str = field(default_factory=lambda: _env("S3_ACCESS_KEY", "minioadmin"))
+    s3_secret_key: str = field(default_factory=lambda: _env("S3_SECRET_KEY", "minioadmin"))
 
 
 settings = Settings()
