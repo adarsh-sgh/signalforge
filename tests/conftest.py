@@ -60,9 +60,12 @@ def write_events(path, rows, files_per_day=1):
 def spark():
     # imported here, not at module scope: the PyFlink tests share this conftest and their
     # image has no pyspark
+    from signalforge.lake.delta import DELTA_PACKAGE, delta_configs
     from signalforge.pipeline.job import build_spark
 
-    s = build_spark("sf-test").newSession()
+    # one session for the whole run (getOrCreate ignores later jar/config changes), so the delta
+    # jar and extensions have to be on it from the start for tests/test_lake.py
+    s = build_spark("sf-test", packages=[DELTA_PACKAGE], configs=delta_configs()).newSession()
     s.sparkContext.setLogLevel("ERROR")
     yield s
     s.stop()
