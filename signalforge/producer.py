@@ -59,7 +59,14 @@ def publish(producer: Producer, topic: str, n: int, n_entities: int = 200, seed:
         else:
             ev = last = synth_event(rng, n_entities, now_ms, n_tenants)
         # key by tenant so a tenant's events stay ordered within one partition
-        producer.produce(topic, key=ev["tenant_id"].encode(), value=encode(**ev))
+        payload = encode(**ev)
+        try:
+            producer.produce(topic, key=ev["tenant_id"].encode(), value=payload)
+        except BufferError:
+            # librdkafka's send queue is bounded (100k messages by default); drain and retry rather
+            # than dropping the event, so a burst larger than the queue still publishes in full
+            producer.flush()
+            producer.produce(topic, key=ev["tenant_id"].encode(), value=payload)
         sent += 1
         if rate > 0:
             time.sleep(1.0 / rate)

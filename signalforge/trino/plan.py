@@ -83,6 +83,21 @@ def _sargable_columns(root: exp.Expression) -> List[exp.Column]:
     return out
 
 
+def _projects_star(root: exp.Expression) -> bool:
+    """True only for a star in a projection list (`SELECT *`, `SELECT t.*`).
+
+    `count(*)` also contains a Star node but reads one column's worth of nothing, so walking every
+    Star in the tree would refuse the most common aggregate query there is.
+    """
+    for select in root.find_all(exp.Select):
+        for projection in select.expressions:
+            if isinstance(projection, exp.Star):
+                return True
+            if isinstance(projection, exp.Column) and isinstance(projection.this, exp.Star):
+                return True
+    return False
+
+
 def _alias_map(root: exp.Expression) -> Dict[str, str]:
     """alias (or bare table name) -> qualified table name."""
     out: Dict[str, str] = {}
@@ -133,5 +148,5 @@ def analyze(sql: str) -> QueryShape:
     return QueryShape(kind=kind, tables=tables,
                       predicates={k: frozenset(v) for k, v in predicates.items()},
                       has_limit=root.args.get("limit") is not None,
-                      projects_star=bool(list(root.find_all(exp.Star))),
+                      projects_star=_projects_star(root),
                       joins=joins, cross_joins=cross, statements=len(parsed))

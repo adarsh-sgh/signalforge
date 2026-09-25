@@ -43,6 +43,11 @@ def test_analyze_sees_tables_pruning_columns_and_shape():
                 "SELECT n FROM %s WHERE day >= '2026-09-01'" % TABLE):
         assert analyze(sql).constrained(analyze(sql).tables[0], ["day"])
 
+    # a star inside a function is not a `SELECT *`; a star in the projection list is
+    assert not analyze("SELECT count(*) FROM %s WHERE day = '2026-09-03'" % TABLE).projects_star
+    assert analyze("SELECT * FROM %s" % TABLE).projects_star
+    assert analyze("SELECT a.* FROM %s a" % TABLE).projects_star
+
     joined = analyze("SELECT a.n FROM %s a JOIN delta.signals.tenants t ON a.tenant_id = t.id "
                      "WHERE a.day = '2026-09-03'" % TABLE)
     assert joined.joins == 1 and joined.cross_joins == 0
@@ -59,6 +64,7 @@ def test_each_rule_rejects_the_query_it_is_there_for_and_lets_the_good_one_throu
         "SELECT n FROM %s" % TABLE: (REJECT, "missing_partition_predicate"),
         "SELECT * FROM %s WHERE day = '2026-09-03'" % TABLE: (REJECT, "unbounded_select_star"),
         "SELECT * FROM %s WHERE day = '2026-09-03' LIMIT 10" % TABLE: (ALLOW, "ok"),
+        "SELECT count(*) FROM %s WHERE day = '2026-09-03'" % TABLE: (ALLOW, "ok"),
         "SELECT a.n FROM %s a, delta.signals.tenants t WHERE a.day = '2026-09-03'" % TABLE:
             (REJECT, "cross_join"),
         "DROP TABLE %s" % TABLE: (REJECT, "statement_not_allowed"),
@@ -75,12 +81,13 @@ def test_each_rule_rejects_the_query_it_is_there_for_and_lets_the_good_one_throu
 
     assert len(audit.decisions) == len(cases)
     got = summarize(audit.decisions)
-    assert got["total"] == 9 and got["by_verdict"] == {ALLOW: 3, REJECT: 6}
+    assert got["total"] == 10 and got["by_verdict"] == {ALLOW: 4, REJECT: 6}
     assert got["by_rule"]["missing_partition_predicate"] == 1
     # rejections are costed too, so "bytes the guard refused" is a real number and not just a count
     refused = [d for d in audit.decisions if d.rule == "missing_partition_predicate"]
     assert refused[0].estimated_bytes == 100 << 20
     assert got["estimated_bytes_blocked"] == 4 * (100 << 20)   # the 4 rejections of a parseable SELECT
+    assert got["estimated_bytes_admitted"] == 4 * (100 << 20)
 
 
 def test_scan_budget_uses_the_estimate_and_the_tightest_table_limit():

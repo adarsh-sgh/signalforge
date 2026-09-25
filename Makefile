@@ -3,7 +3,7 @@ export JAVA_HOME ?= $(shell /usr/libexec/java_home -v 17 2>/dev/null || echo /op
 export PYTHONPATH := .
 SINK_FLAG := $(if $(SINK),--sink $(SINK))
 
-.PHONY: venv proto test bench up down produce stream batch api airflow flink-image flink-test flink-job guard trino-sql lake-register
+.PHONY: venv proto test bench up down produce stream batch api airflow flink-image flink-test flink-job guard trino-sql lake-register smoke
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
@@ -71,3 +71,7 @@ lake-register:
 	  "CREATE SCHEMA IF NOT EXISTS delta.signals WITH (location = 's3://lake/signals')"
 	docker compose exec -T trino trino --execute \
 	  "CALL delta.system.register_table(schema_name => 'signals', table_name => 'signals_daily', table_location => 's3://lake/signals_daily')"
+
+# the whole stack end to end; prints the numbers in the README
+smoke:
+	./scripts/smoke.sh

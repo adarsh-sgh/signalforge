@@ -25,8 +25,9 @@ from typing import Iterable, Optional, Tuple
 from pyflink.common import Duration, Time, Types, WatermarkStrategy
 from pyflink.common.serialization import ByteArraySchema, SimpleStringSchema
 from pyflink.common.watermark_strategy import TimestampAssigner
-from pyflink.datastream import (AggregateFunction, KeyedProcessFunction, OutputTag, ProcessWindowFunction,
-                                RuntimeContext, RuntimeExecutionMode, StreamExecutionEnvironment)
+from pyflink.datastream import (AggregateFunction, KeyedProcessFunction, MapFunction, OutputTag,
+                                ProcessWindowFunction, RuntimeContext, RuntimeExecutionMode,
+                                StreamExecutionEnvironment)
 from pyflink.datastream.connectors.kafka import (KafkaOffsetsInitializer, KafkaRecordSerializationSchema,
                                                  KafkaSink, KafkaSource)
 from pyflink.datastream.state import ValueStateDescriptor
@@ -61,10 +62,10 @@ class _EventTime(TimestampAssigner):
         return value[3]
 
 
-class _DecodeProtobuf:
+class _DecodeProtobuf(MapFunction):
     """Kafka value bytes -> event row. Undecodable payloads become None and are filtered out."""
 
-    def __call__(self, raw: bytes):
+    def map(self, raw: bytes):
         e = decode(raw)
         if e is None:
             return None
@@ -130,8 +131,12 @@ class Detect(KeyedProcessFunction):
             yield hit.to_json()
 
 
-class CountLate:
-    """Late events are forwarded verbatim; the counter is what the SLA check reads."""
+class CountLate(MapFunction):
+    """Late events are forwarded verbatim; the counter is what the SLA check reads.
+
+    A MapFunction rather than a plain callable, because only a real function class gets `open`
+    called and the counter would otherwise still be None on the first record.
+    """
 
     def __init__(self) -> None:
         self.late = None
@@ -139,7 +144,7 @@ class CountLate:
     def open(self, runtime_context: RuntimeContext) -> None:
         self.late = runtime_context.get_metrics_group().counter("sf_late_events")
 
-    def __call__(self, value):
+    def map(self, value):
         self.late.inc()
         return value
 
