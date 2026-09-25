@@ -1,9 +1,9 @@
 """Delta table behaviour that the rest of the design leans on: an added column lands without
 rewriting history, a day partition can be replaced idempotently, and an old snapshot is readable.
 
-Runs on a local filesystem path so no MinIO is needed; the only extra cost is the delta-spark jar,
+Runs on a local filesystem path so no object store is needed; the only extra cost is the delta-spark jar,
 which `spark.jars.packages` pulls once. `is_object_store` decides whether the s3a jars are added,
-and scripts/smoke.sh runs the same code against MinIO over s3a.
+and scripts/smoke.sh runs the same code against the S3 gateway over s3a.
 """
 import pytest
 
@@ -81,15 +81,15 @@ def test_schema_evolution_and_time_travel(delta_spark, tmp_path):
     assert lake.read(delta_spark, as_of=as_of).count() == 1
 
 
-def test_object_store_paths_pull_the_s3a_jars_and_minio_configs():
+def test_object_store_paths_pull_the_s3a_jars_and_endpoint_configs():
     assert is_object_store("s3a://lake/signals_daily") and not is_object_store("/tmp/x")
     assert lake_packages("/tmp/x") == [DELTA_PACKAGE]
     assert lake_packages("s3a://lake/t") == [DELTA_PACKAGE] + list(S3A_PACKAGES)
 
-    cfg = Settings(s3_endpoint="http://minio:9000", s3_access_key="k", s3_secret_key="s")
+    cfg = Settings(s3_endpoint="http://s3:8333", s3_access_key="k", s3_secret_key="s")
     conf = s3a_configs(cfg)
-    assert conf["spark.hadoop.fs.s3a.endpoint"] == "http://minio:9000"
-    assert conf["spark.hadoop.fs.s3a.path.style.access"] == "true"          # MinIO needs this
+    assert conf["spark.hadoop.fs.s3a.endpoint"] == "http://s3:8333"
+    assert conf["spark.hadoop.fs.s3a.path.style.access"] == "true"          # the local S3 gateway needs this
     assert conf["spark.hadoop.fs.s3a.connection.ssl.enabled"] == "false"
     assert conf["spark.hadoop.fs.s3a.access.key"] == "k"
 

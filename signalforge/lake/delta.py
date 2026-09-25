@@ -1,4 +1,4 @@
-"""Delta table on S3-compatible object storage (MinIO locally, S3 in a real deployment).
+"""Delta table on S3-compatible object storage (SeaweedFS locally, S3 in a real deployment).
 
 The pipeline writes every rollup document twice: into ClickHouse/OpenSearch for point lookups
 (milliseconds, one row per entity-day) and, append-only, into `signals_daily` on the lake for
@@ -29,7 +29,7 @@ def delta_configs() -> Dict[str, str]:
 
 
 def s3a_configs(cfg: Settings = settings) -> Dict[str, str]:
-    """MinIO needs path-style access and an explicit endpoint; S3 proper ignores both."""
+    """SeaweedFS and MinIO need path-style access and an explicit endpoint; S3 proper ignores both."""
     return {"spark.hadoop.fs.s3a.endpoint": cfg.s3_endpoint,
             "spark.hadoop.fs.s3a.access.key": cfg.s3_access_key,
             "spark.hadoop.fs.s3a.secret.key": cfg.s3_secret_key,

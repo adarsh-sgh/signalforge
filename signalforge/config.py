@@ -48,9 +48,18 @@ class Settings:
     # delta lake on s3-compatible storage; empty lake_path disables the lake leg
     lake_path: str = field(default_factory=lambda: _env("LAKE_PATH", ""))
     lake_table: str = field(default_factory=lambda: _env("LAKE_TABLE", "signals_daily"))
-    s3_endpoint: str = field(default_factory=lambda: _env("S3_ENDPOINT", "http://localhost:9000"))
-    s3_access_key: str = field(default_factory=lambda: _env("S3_ACCESS_KEY", "minioadmin"))
-    s3_secret_key: str = field(default_factory=lambda: _env("S3_SECRET_KEY", "minioadmin"))
+    s3_endpoint: str = field(default_factory=lambda: _env("S3_ENDPOINT", "http://localhost:8333"))
+    s3_access_key: str = field(default_factory=lambda: _env("S3_ACCESS_KEY", "signalforge"))
+    s3_secret_key: str = field(default_factory=lambda: _env("S3_SECRET_KEY", "signalforge"))
+    # trino query layer + admission guard
+    trino_url: str = field(default_factory=lambda: _env("TRINO_URL", "http://localhost:8080"))
+    trino_catalog: str = field(default_factory=lambda: _env("TRINO_CATALOG", "delta"))
+    trino_schema: str = field(default_factory=lambda: _env("TRINO_SCHEMA", "signals"))
+    trino_guard_port: int = field(default_factory=lambda: int(_env("TRINO_GUARD_PORT", "8010")))
+    trino_max_scan_bytes: int = field(default_factory=lambda: int(_env("TRINO_MAX_SCAN_BYTES", str(5 << 30))))
+    trino_max_concurrent_per_user: int = field(default_factory=lambda: int(_env("TRINO_MAX_CONCURRENT", "3")))
+    trino_policy_file: str = field(default_factory=lambda: _env("TRINO_POLICY_FILE", ""))
+    trino_audit_file: str = field(default_factory=lambda: _env("TRINO_AUDIT_FILE", ""))
 
 
 settings = Settings()

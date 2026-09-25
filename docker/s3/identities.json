@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "signalforge",
+      "credentials": [{"accessKey": "signalforge", "secretKey": "signalforge"}],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

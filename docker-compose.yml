@@ -48,29 +48,43 @@ services:
       interval: 5s
       retries: 20
 
-  # S3-compatible storage for the Delta table; `lake` is the bucket Trino and Spark share.
-  minio:
-    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
-    command: server /data --console-address ":9001"
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+  # S3-compatible object storage for the Delta table. SeaweedFS rather than MinIO because
+  # MinIO stopped publishing public images; the s3a and Trino config is the same either way.
+  s3:
+    image: chrislusf/seaweedfs:3.80
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -ip=s3 -master.volumeSizeLimitMB=128
+    volumes:
+      - ./docker/s3/identities.json:/etc/seaweedfs/s3.json:ro
     ports:
-      - "9000:9000"
-      - "9001:9001"   # console
+      - "8333:8333"
     healthcheck:
-      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      # the master status endpoint, because the S3 port rejects unsigned requests once
+      # identities.json is in place
+      test: ["CMD-SHELL", "wget -qO- http://s3:9333/cluster/status >/dev/null || exit 1"]
       interval: 5s
       retries: 30
 
-  minio-init:
-    image: minio/mc:RELEASE.2024-10-02T08-27-28Z
+  s3-init:
+    image: chrislusf/seaweedfs:3.80
     depends_on:
-      minio: { condition: service_healthy }
-    entrypoint: >
-      sh -c "mc alias set lake http://minio:9000 minioadmin minioadmin &&
-             mc mb --ignore-existing lake/lake &&
-             mc ls lake/"
+      s3: { condition: service_healthy }
+    entrypoint: ["sh", "-c", "echo 's3.bucket.create -name lake' | weed shell -master=s3:9333 && echo bucket lake ready"]
+
+  trino:
+    image: trinodb/trino:476
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/trino/config.properties:/etc/trino/config.properties:ro
+      - ./docker/trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./docker/trino/node.properties:/etc/trino/node.properties:ro
+      - ./docker/trino/catalog/delta.properties:/etc/trino/catalog/delta.properties:ro
+    depends_on:
+      s3: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info | grep -q '\"starting\":false'"]
+      interval: 5s
+      retries: 40
 
   # Flink: PyFlink has x86_64-only Linux wheels, hence the pinned platform.
   flink-jobmanager:

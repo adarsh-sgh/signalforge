@@ -144,25 +144,28 @@ class Guard:
         except ParseError as e:
             return Decision(REJECT, "unparsable", str(e), **base)
         base["tables"] = tuple(t.qualified for t in shape.tables)
+        # the estimate is taken before the structural rules so a refusal can be *costed*: the
+        # audit then says how much of the lake the rejected statement would have read. EXPLAIN
+        # (TYPE IO) is planning only, so this never reads data.
+        budget = self.policy.budget_for(shape)
+        estimate = self._estimate(sql) if shape.kind in self.policy.allowed_kinds else None
+        base.update(estimated_bytes=estimate, budget_bytes=budget)
 
         hit = self._structural(shape)
         if hit:
             return Decision(REJECT, hit[0], hit[1], **base)
 
-        budget = self.policy.budget_for(shape)
-        estimate = self._estimate(sql)
         if estimate is not None and estimate > budget:
             return Decision(REJECT, "scan_budget_exceeded",
                             "estimated scan %s over the %s budget" % (human(estimate), human(budget)),
-                            estimated_bytes=estimate, budget_bytes=budget, **base)
+                            **base)
 
         cap = self.policy.max_concurrent_per_user
         if cap and base["inflight"] >= cap:
             return Decision(THROTTLE, "user_concurrency_cap",
                             "%s already has %d queries running (cap %d)" % (user, base["inflight"], cap),
-                            estimated_bytes=estimate, budget_bytes=budget,
                             retry_after_seconds=self.policy.retry_after_seconds, **base)
-        return Decision(ALLOW, "ok", "admitted", estimated_bytes=estimate, budget_bytes=budget, **base)
+        return Decision(ALLOW, "ok", "admitted", **base)
 
     def admit(self, user: str, sql: str) -> Decision:
         """Decide, record, and reserve a slot when the verdict is allow."""

@@ -3,7 +3,7 @@ export JAVA_HOME ?= $(shell /usr/libexec/java_home -v 17 2>/dev/null || echo /op
 export PYTHONPATH := .
 SINK_FLAG := $(if $(SINK),--sink $(SINK))
 
-.PHONY: venv proto test bench up down produce stream batch api airflow flink-image flink-test flink-job
+.PHONY: venv proto test bench up down produce stream batch api airflow flink-image flink-test flink-job guard trino-sql lake-register
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
@@ -33,7 +33,7 @@ stream:
 batch:
 	$(PY) -m signalforge.pipeline.job --mode batch --source data/archive $(if $(DAY),--day $(DAY)) $(SINK_FLAG)
 
-# same job, plus the Delta leg on MinIO: SF_LAKE_PATH=s3a://lake/signals_daily
+# same job, plus the Delta leg on the S3 store: SF_LAKE_PATH=s3a://lake/signals_daily
 lake-batch:
 	SF_LAKE_PATH=$(or $(LAKE),s3a://lake/signals_daily) \
 	  $(PY) -m signalforge.pipeline.job --mode batch --source data/archive $(if $(DAY),--day $(DAY)) $(SINK_FLAG)
@@ -57,3 +57,17 @@ flink-test: flink-image
 flink-job:
 	docker compose exec -T flink-jobmanager flink run -py signalforge/flink/anomaly_job.py \
 	  -pyclientexec python3 --jarfile /opt/flink/lib/flink-sql-connector-kafka.jar $(FLINK_ARGS)
+
+# admission service in front of trino (SF_TRINO_GUARD_PORT, SF_TRINO_AUDIT_FILE)
+guard:
+	$(PY) -m signalforge.trino.service
+
+trino-sql:
+	docker compose exec -T trino trino --execute "$(SQL)"
+
+# give the Delta table Spark wrote a name Trino can query (file metastore, so it must be registered)
+lake-register:
+	docker compose exec -T trino trino --execute \
+	  "CREATE SCHEMA IF NOT EXISTS delta.signals WITH (location = 's3://lake/signals')"
+	docker compose exec -T trino trino --execute \
+	  "CALL delta.system.register_table(schema_name => 'signals', table_name => 'signals_daily', table_location => 's3://lake/signals_daily')"

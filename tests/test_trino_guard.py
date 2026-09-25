@@ -77,6 +77,10 @@ def test_each_rule_rejects_the_query_it_is_there_for_and_lets_the_good_one_throu
     got = summarize(audit.decisions)
     assert got["total"] == 9 and got["by_verdict"] == {ALLOW: 3, REJECT: 6}
     assert got["by_rule"]["missing_partition_predicate"] == 1
+    # rejections are costed too, so "bytes the guard refused" is a real number and not just a count
+    refused = [d for d in audit.decisions if d.rule == "missing_partition_predicate"]
+    assert refused[0].estimated_bytes == 100 << 20
+    assert got["estimated_bytes_blocked"] == 4 * (100 << 20)   # the 4 rejections of a parseable SELECT
 
 
 def test_scan_budget_uses_the_estimate_and_the_tightest_table_limit():
