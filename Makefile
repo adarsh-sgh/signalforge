@@ -3,7 +3,7 @@ export JAVA_HOME ?= $(shell /usr/libexec/java_home -v 17 2>/dev/null || echo /op
 export PYTHONPATH := .
 SINK_FLAG := $(if $(SINK),--sink $(SINK))
 
-.PHONY: venv proto test bench up down produce stream batch api airflow
+.PHONY: venv proto test bench up down produce stream batch api airflow flink-image flink-test flink-job
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
@@ -18,7 +18,8 @@ bench:
 	$(PY) -m bench.bench --rows 1000000 $(SINK_FLAG) $(BENCH_ARGS)
 
 up:
-	docker compose up -d && docker compose exec redpanda rpk topic create signals -p 4 || true
+	docker compose up -d
+	docker compose exec -T redpanda rpk topic create signals signal_anomalies signal_late -p 4 || true
 
 down:
 	docker compose down -v
@@ -38,3 +39,16 @@ api:
 airflow:
 	.venv/bin/pip install -q -r requirements-airflow.txt --constraint https://raw.githubusercontent.com/apache/airflow/constraints-2.10.5/constraints-3.9.txt
 	AIRFLOW_HOME=$(PWD)/airflow AIRFLOW__CORE__DAGS_FOLDER=$(PWD)/dags AIRFLOW__CORE__LOAD_EXAMPLES=False .venv/bin/airflow standalone
+
+flink-image:
+	docker build --platform linux/amd64 -f docker/flink.Dockerfile -t signalforge-flink:dev .
+
+# PyFlink is x86_64-only on Linux, so the MiniCluster tests run in the image (emulated on arm64).
+flink-test: flink-image
+	docker run --rm --platform linux/amd64 -v "$(PWD)":/opt/signalforge signalforge-flink:dev \
+	  python -m pytest -q tests/flink
+
+# submit the anomaly job to the compose cluster; FLINK_ARGS="--mode ewma --threshold 2.5"
+flink-job:
+	docker compose exec -T flink-jobmanager flink run -py signalforge/flink/anomaly_job.py \
+	  -pyclientexec python3 --jarfile /opt/flink/lib/flink-sql-connector-kafka.jar $(FLINK_ARGS)

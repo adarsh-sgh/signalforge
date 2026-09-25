@@ -12,7 +12,6 @@ os.environ.setdefault("AIRFLOW_HOME", os.path.join(os.path.dirname(os.path.dirna
 
 from signalforge.config import Settings  # noqa: E402
 from signalforge.events.codec import make_event_id  # noqa: E402
-from signalforge.pipeline.job import build_spark  # noqa: E402
 
 D1, D2 = "2026-09-03", "2026-09-04"
 _MS = 86_400_000
@@ -59,6 +58,10 @@ def write_events(path, rows, files_per_day=1):
 
 @pytest.fixture(scope="session")
 def spark():
+    # imported here, not at module scope: the PyFlink tests share this conftest and their
+    # image has no pyspark
+    from signalforge.pipeline.job import build_spark
+
     s = build_spark("sf-test").newSession()
     s.sparkContext.setLogLevel("ERROR")
     yield s

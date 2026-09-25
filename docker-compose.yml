@@ -47,3 +47,37 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 20
+
+  # Flink: PyFlink has x86_64-only Linux wheels, hence the pinned platform.
+  flink-jobmanager:
+    build: { context: ., dockerfile: docker/flink.Dockerfile }
+    image: signalforge-flink:dev
+    platform: linux/amd64
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 1
+      - SF_KAFKA_BOOTSTRAP=redpanda:29092
+    ports:
+      - "8081:8081"   # web ui + rest api (job submission, metrics)
+    volumes:
+      - .:/opt/signalforge
+    depends_on:
+      redpanda: { condition: service_healthy }
+
+  flink-taskmanager:
+    image: signalforge-flink:dev
+    platform: linux/amd64
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+      - SF_KAFKA_BOOTSTRAP=redpanda:29092
+    volumes:
+      - .:/opt/signalforge
+    depends_on: [flink-jobmanager]
