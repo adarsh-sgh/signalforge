@@ -60,6 +60,8 @@ class Settings:
     trino_max_concurrent_per_user: int = field(default_factory=lambda: int(_env("TRINO_MAX_CONCURRENT", "3")))
     trino_policy_file: str = field(default_factory=lambda: _env("TRINO_POLICY_FILE", ""))
     trino_audit_file: str = field(default_factory=lambda: _env("TRINO_AUDIT_FILE", ""))
+    # freshness SLOs: "dataset:max_lag_seconds[:min_rows[:heal]]" per dataset
+    sla: str = field(default_factory=lambda: _env("SLA", "archive:5400,lake:5400,serving:5400"))
 
 
 settings = Settings()

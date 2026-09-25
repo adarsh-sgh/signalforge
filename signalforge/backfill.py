@@ -3,10 +3,12 @@ import glob
 import os
 import shutil
 import tempfile
+from typing import Optional
 
 from pyspark.sql import SparkSession
 
 from signalforge.config import Settings, settings
+from signalforge.lake.delta import DeltaLake
 from signalforge.pipeline.job import run_batch
 from signalforge.search.store import SearchStore
 from signalforge.tenancy import Router
@@ -33,11 +35,13 @@ def compact_day(spark: SparkSession, day: str, cfg: Settings = settings, target_
     return before
 
 
-def reindex_day(spark: SparkSession, day: str, store: SearchStore, cfg: Settings = settings) -> int:
-    """Recompute the day's documents from the archive; upsert overwrites whatever streaming wrote."""
+def reindex_day(spark: SparkSession, day: str, store: SearchStore, cfg: Settings = settings,
+                lake: Optional[DeltaLake] = None) -> int:
+    """Recompute the day's documents from the archive; upsert overwrites whatever streaming wrote,
+    and `replaceWhere` swaps the same day's Delta partition, so both legs are idempotent."""
     if not os.path.isdir(day_path(cfg.archive_dir, day)):
         return 0
-    return run_batch(spark, cfg.archive_dir, store, cfg, day=day)
+    return run_batch(spark, cfg.archive_dir, store, cfg, day=day, lake=lake)
 
 
 def verify_day(day: str, store: SearchStore, expected: int, cfg: Settings = settings) -> int:

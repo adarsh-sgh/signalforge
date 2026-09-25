@@ -10,6 +10,11 @@ INDICES_RETIRED = Counter("sf_indices_retired_total", "Daily indices deleted pas
 BATCH_SECONDS = Histogram("sf_batch_seconds", "Wall time per micro-batch / batch run")
 BATCH_ROWS = Gauge("sf_last_batch_rows", "Input rows in the most recent batch")
 
+DATASET_LAG = Gauge("sf_dataset_lag_seconds", "Age of the newest write per dataset (-1 = nothing)",
+                    ["dataset"])
+SLA_BREACHES = Counter("sf_sla_breaches_total", "Freshness SLO breaches", ["dataset", "kind"])
+HEAL_ACTIONS = Counter("sf_heal_actions_total", "Self-healing actions taken", ["dataset", "action"])
+
 TRINO_DECISIONS = Counter("sf_trino_decisions_total", "Admission decisions", ["verdict", "rule"])
 TRINO_SCAN_BLOCKED = Counter("sf_trino_scan_bytes_blocked_total",
                              "Estimated bytes of table scan the guard refused")
