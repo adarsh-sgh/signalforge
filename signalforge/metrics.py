@@ -10,6 +10,13 @@ INDICES_RETIRED = Counter("sf_indices_retired_total", "Daily indices deleted pas
 BATCH_SECONDS = Histogram("sf_batch_seconds", "Wall time per micro-batch / batch run")
 BATCH_ROWS = Gauge("sf_last_batch_rows", "Input rows in the most recent batch")
 
+TRINO_DECISIONS = Counter("sf_trino_decisions_total", "Admission decisions", ["verdict", "rule"])
+TRINO_SCAN_BLOCKED = Counter("sf_trino_scan_bytes_blocked_total",
+                             "Estimated bytes of table scan the guard refused")
+TRINO_SCANNED = Counter("sf_trino_scan_bytes_total", "Bytes Trino actually processed for admitted queries")
+TRINO_INFLIGHT = Gauge("sf_trino_inflight_queries", "Queries in flight per user", ["user"])
+TRINO_QUERY_SECONDS = Histogram("sf_trino_query_seconds", "Wall time of an admitted query")
+
 HTTP_REQUESTS = Counter("sf_http_requests_total", "API requests", ["path", "status"])
 HTTP_LATENCY = Histogram("sf_http_latency_seconds", "API latency", ["path"])
 CACHE_LOOKUPS = Counter("sf_cache_lookups_total", "Point-lookup cache results", ["result"])
