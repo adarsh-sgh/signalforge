@@ -1,0 +1,5 @@
+# PyFlink ships x86_64-only Linux wheels, so the anomaly job runs in the
+# linux/amd64 image built by docker/flink.Dockerfile (native in CI).
+apache-flink==2.1.3
+protobuf>=4.25,<5
+pytest>=7.4,<9

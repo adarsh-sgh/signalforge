@@ -32,6 +32,19 @@ class Settings:
     retention_days: int = field(default_factory=lambda: int(_env("RETENTION_DAYS", "30")))
     # primaries for indices the lifecycle step pre-creates: "pooled=3,acme=6" (missing = mapping default)
     index_shards: str = field(default_factory=lambda: _env("INDEX_SHARDS", ""))
+    # flink anomaly detection
+    anomaly_mode: str = field(default_factory=lambda: _env("ANOMALY_MODE", "zscore"))
+    anomaly_metric: str = field(default_factory=lambda: _env("ANOMALY_METRIC", "mean_score"))
+    anomaly_threshold: float = field(default_factory=lambda: float(_env("ANOMALY_THRESHOLD", "3.0")))
+    anomaly_min_samples: int = field(default_factory=lambda: int(_env("ANOMALY_MIN_SAMPLES", "5")))
+    anomaly_history: int = field(default_factory=lambda: int(_env("ANOMALY_HISTORY", "30")))
+    anomaly_alpha: float = field(default_factory=lambda: float(_env("ANOMALY_ALPHA", "0.3")))
+    anomaly_min_stddev: float = field(default_factory=lambda: float(_env("ANOMALY_MIN_STDDEV", "0.05")))
+    anomaly_window_ms: int = field(default_factory=lambda: int(_env("ANOMALY_WINDOW_MS", "60000")))
+    # how far behind the newest event a straggler may arrive before the window closes on it
+    anomaly_lateness_ms: int = field(default_factory=lambda: int(_env("ANOMALY_LATENESS_MS", "5000")))
+    anomaly_topic: str = field(default_factory=lambda: _env("ANOMALY_TOPIC", "signal_anomalies"))
+    anomaly_late_topic: str = field(default_factory=lambda: _env("ANOMALY_LATE_TOPIC", "signal_late"))
 
 
 settings = Settings()
